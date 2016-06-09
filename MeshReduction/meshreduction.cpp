@@ -1,12 +1,11 @@
 #include "meshreduction.h"
 
-MeshReduction::MeshReduction(QWidget *parent)
-	: QMainWindow(parent)
+MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
 {
 	ui.setupUi(this);
 }
 
 MeshReduction::~MeshReduction()
 {
-
+	
 }
