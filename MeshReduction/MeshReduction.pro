@@ -1,5 +1,5 @@
 TEMPLATE = app
-QT += core widgets gui
+QT += core widgets gui opengl
 DEFINES += QT_DLL QT_WIDGETS_LIB
 CONFIG += debug_and_release
 

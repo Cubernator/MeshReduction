@@ -1,4 +1,4 @@
-#include "meshreduction.h"
+#include "meshreduction.hpp"
 #include <QtWidgets/QApplication>
 
 int main(int argc, char *argv[])

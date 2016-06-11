@@ -1,12 +1,19 @@
-HEADERS += ./include/meshreduction.h \
-    ./include/glwidget.h \
-    ./include/meshfile.h
+HEADERS += \
+    $$PWD/include/glwidget.hpp \
+    $$PWD/include/mesh.hpp \
+    $$PWD/include/meshreduction.hpp \
+    $$PWD/include/scenefile.hpp
 
-SOURCES += ./src/glwidget.cpp \
-    ./src/main.cpp \
-    ./src/meshreduction.cpp \
-    ./src/meshfile.cpp
+SOURCES += \
+    $$PWD/src/glwidget.cpp \
+    $$PWD/src/main.cpp \
+    $$PWD/src/meshreduction.cpp \
+    $$PWD/src/scenefile.cpp \
+    $$PWD/src/mesh.cpp
 
-FORMS += ./forms/meshreduction.ui
+FORMS += $$PWD/forms/meshreduction.ui
 
-RESOURCES += ./res/meshreduction.qrc
+RESOURCES += \
+    $$PWD/res/shader.qrc
+
+DISTFILES +=
