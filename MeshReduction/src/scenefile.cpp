@@ -8,11 +8,27 @@
 
 SceneFile::SceneFile(const QString& fileName) : m_fileName(fileName)
 {
-    m_importer.ReadFile(m_fileName.toLatin1().data(), aiProcessPreset_TargetRealtime_MaxQuality);
+    unsigned int pFlags = aiProcess_Triangulate
+            | aiProcess_GenNormals
+            | aiProcess_ValidateDataStructure
+            | aiProcess_SortByPType
+            | aiProcess_FindInvalidData
+            | aiProcess_GenUVCoords;
 
-    const aiScene* scene = m_importer.GetScene();
+    const aiScene* scene = m_importer.ReadFile(m_fileName.toLatin1().data(), pFlags);
 
-    for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
-        m_meshes.emplace_back(new Mesh(scene->mMeshes[i]));
+    if (scene) {
+        for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
+            m_meshes.emplace_back(new Mesh(scene->mMeshes[i]));
+        }
     }
+}
+
+QString SceneFile::getImportExtensions()
+{
+    Assimp::Importer dummyImporter;
+    aiString ext;
+    dummyImporter.GetExtensionList(ext);
+    QString extensions(ext.C_Str());
+    return extensions.replace(";", " ");
 }

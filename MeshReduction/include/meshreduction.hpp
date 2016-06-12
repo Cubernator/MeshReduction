@@ -4,8 +4,11 @@
 #include <memory>
 
 #include <QtWidgets/QMainWindow>
-#include <QStringListModel>
+#include <QAction>
+
 #include "ui_meshreduction.h"
+
+#define MAX_RECENTFILES 10
 
 class SceneFile;
 class Mesh;
@@ -21,6 +24,10 @@ private:
     Mesh* m_selectedMesh;
 	GLWidget* m_glWidget;
 
+    QAction* m_recentFileActions[MAX_RECENTFILES];
+
+    void openFile(const QString& fileName);
+    void updateRecentFileActions();
     void populateMeshList();
 
 public:
@@ -39,7 +46,10 @@ public slots:
     void selectMesh(Mesh* mesh);
 
 private slots:
-	void open();
+    void openFile();
+    void openRecentFile();
+    void clearRecentFiles();
+    void closeFile();
     void handleMeshSelection(int index);
 };
 

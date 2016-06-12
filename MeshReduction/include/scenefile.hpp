@@ -26,6 +26,8 @@ public:
 
     inline unsigned int numMeshes() const { return m_meshes.size(); }
     inline Mesh* getMesh(unsigned int index) { return m_meshes[index].get(); }
+
+    static QString getImportExtensions();
 };
 
 #endif

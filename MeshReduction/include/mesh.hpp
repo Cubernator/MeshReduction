@@ -16,7 +16,9 @@ private:
     const aiMesh* m_importedMesh;
 
     QOpenGLVertexArrayObject m_vao;
-    QOpenGLBuffer m_vertexBuf, m_indexBuf;
+    QOpenGLBuffer m_indexBuf;
+    QOpenGLBuffer m_vertexBuf;
+    QOpenGLBuffer m_normalBuf;
 
     std::vector<unsigned int> m_indices;
 
@@ -36,8 +38,8 @@ public:
     inline const QOpenGLBuffer& vertexBuf() const { return m_vertexBuf; }
     inline const QOpenGLBuffer& indexBuf() const { return m_indexBuf; }
 
-    void initGL();
-    void cleanupGL();
+    void initGL(QOpenGLFunctions* f);
+    void cleanupGL(QOpenGLFunctions* f);
 
     void draw(QOpenGLFunctions* f);
 };
