@@ -37,9 +37,12 @@ public:
     inline SceneFile* currentFile() const { return m_currentFile.get(); }
     inline Mesh* selectedMesh() const { return m_selectedMesh; }
 
+    static QString getFormattedMeshName(const Mesh* mesh);
+
 signals:
 	void currentFileChanged(SceneFile* newFile);
     void selectedMeshChanged(Mesh* mesh);
+    void meshChanged();
 
 public slots:
 	void setCurrentFile(SceneFile* file);
@@ -51,6 +54,9 @@ private slots:
     void clearRecentFiles();
     void closeFile();
     void handleMeshSelection(int index);
+    void updateMeshProperties();
+    void resetMesh();
+    void decimateMesh();
 };
 
 #endif // MESHREDUCTION_H

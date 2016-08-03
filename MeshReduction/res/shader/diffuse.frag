@@ -5,6 +5,8 @@ uniform vec4 color;
 in vec3 vNormal;
 in vec3 vLightVec;
 
+out vec4 fragColor;
+
 void main(void)
 {
     vec3 N = normalize(vNormal);
@@ -12,5 +14,5 @@ void main(void)
 
     float NdotL = clamp(dot(N, L), 0.0, 1.0);
 
-    gl_FragColor = color * NdotL;
+    fragColor = color * NdotL;
 }

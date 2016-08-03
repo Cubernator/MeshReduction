@@ -1,6 +1,8 @@
 <RCC>
     <qresource prefix="/">
-        <file>shader/default.frag</file>
-        <file>shader/default.vert</file>
+        <file>shader/unlit.vert</file>
+        <file>shader/unlit.frag</file>
+        <file>shader/diffuse.frag</file>
+        <file>shader/diffuse.vert</file>
     </qresource>
 </RCC>

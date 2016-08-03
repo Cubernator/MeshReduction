@@ -8,12 +8,16 @@
 
 SceneFile::SceneFile(const QString& fileName) : m_fileName(fileName)
 {
-    unsigned int pFlags = aiProcess_Triangulate
-            | aiProcess_GenNormals
+    unsigned int pFlags = aiProcess_GenNormals
+            | aiProcess_JoinIdenticalVertices
+            | aiProcess_Triangulate
             | aiProcess_ValidateDataStructure
             | aiProcess_SortByPType
             | aiProcess_FindInvalidData
+            | aiProcess_FindDegenerates
             | aiProcess_GenUVCoords;
+
+    m_importer.SetPropertyInteger(AI_CONFIG_PP_SBP_REMOVE, aiPrimitiveType_POINT | aiPrimitiveType_LINE);
 
     const aiScene* scene = m_importer.ReadFile(m_fileName.toLatin1().data(), pFlags);
 

@@ -1,5 +1,6 @@
 #include "meshreduction.hpp"
 #include <QtWidgets/QApplication>
+#include <QGLFormat>
 
 int main(int argc, char *argv[])
 {

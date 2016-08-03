@@ -20,6 +20,8 @@ CONFIGDIR = .
 CONFIG(release, debug|release):CONFIGDIR = ./release
 CONFIG(debug, debug|release):CONFIGDIR = ./debug
 
+CONFIG(debug, release|debug):DEFINES += _DEBUG
+
 OBJECTS_DIR = $$CONFIGDIR/.obj
 
 msvc {
