@@ -1,8 +1,8 @@
 #include "mesh.hpp"
-#include "util.hpp"
 
 #include <QOpenGLFunctions>
 #include <QtDebug>
+#include <QMatrix4x4>
 #include <assimp/mesh.h>
 
 #include <assert.h>
@@ -11,32 +11,17 @@
 #include <unordered_map>
 #include <algorithm>
 #include <array>
+#include <set>
+#include <unordered_set>
 
 Mesh::Mesh(const aiMesh *mesh) : m_importedMesh(mesh)
 {
     processImportedMesh();
 }
 
-Mesh::~Mesh()
-{
-}
+Mesh::~Mesh() { }
 
 QString Mesh::name() const { return m_importedMesh->mName.C_Str(); }
-
-unsigned int Mesh::vertexCount() const { return m_vertexPositions.size(); }
-unsigned int Mesh::indexCount() const { return m_indices.size(); }
-
-unsigned int Mesh::edgeCount() const { return m_edges.size() / 2; }
-unsigned int Mesh::faceCount() const { return m_faceEdges.size(); }
-
-unsigned int Mesh::importedFaceCount() const { return m_importedFaceCount; }
-
-unsigned int Mesh::vertexSize() const { return sizeof(QVector3D); }
-unsigned int Mesh::normalSize() const { return sizeof(QVector3D); }
-
-const QVector3D *Mesh::vertexData() const { return m_vertexPositions.data(); }
-const QVector3D *Mesh::normalData() const { return m_vertexNormals.data(); }
-const unsigned int *Mesh::indexData() const { return m_indices.data(); }
 
 void Mesh::processImportedMesh()
 {
@@ -44,8 +29,8 @@ void Mesh::processImportedMesh()
 
     // copy raw vertex data
     unsigned int vCount = m_importedMesh->mNumVertices;
-    QVector3D* vData = reinterpret_cast<QVector3D*>(m_importedMesh->mVertices);
-    QVector3D* nData = reinterpret_cast<QVector3D*>(m_importedMesh->mNormals);
+    glm::vec3* vData = reinterpret_cast<glm::vec3*>(m_importedMesh->mVertices);
+    glm::vec3* nData = reinterpret_cast<glm::vec3*>(m_importedMesh->mNormals);
     m_vertexPositions.assign(vData, vData + vCount);
     m_vertexNormals.assign(nData, nData + vCount);
 
@@ -92,8 +77,6 @@ void Mesh::processImportedMesh()
         ++f;
     }
 
-    m_importedFaceCount = faceCount();
-
     std::vector<mesh_index> nonManifold;
 
     // second pass: find opposite halfedges
@@ -138,17 +121,63 @@ void Mesh::processImportedMesh()
             m_edges[fe].m_vertex = nv;
         }
     }
+
+    m_importedFaceCount = faceCount();
+    m_importedHalfedgeCount = halfedgeCount();
+    m_importedVertexCount = vertexCount();
+}
+
+aiMesh *Mesh::makeExportMesh() const
+{
+    aiMesh* mesh = new aiMesh();
+
+    mesh->mName = m_importedMesh->mName;
+    mesh->mMaterialIndex = m_importedMesh->mMaterialIndex;
+
+    unsigned int vc = vertexCount();
+
+    mesh->mNumVertices = vc;
+
+    mesh->mVertices = new aiVector3D[vc];
+    std::memcpy(mesh->mVertices, vertexData(), vc * vertexSize());
+
+    mesh->mNormals = new aiVector3D[vc];
+    std::memcpy(mesh->mNormals, normalData(), vc * normalSize());
+
+    unsigned int fc = faceCount();
+
+    mesh->mNumFaces = fc;
+    mesh->mFaces = new aiFace[fc];
+
+    for (mesh_index f = 0; f < fc; ++f) {
+        mesh_index e0 = fEdge(f), e1 = eNext(e0), e2 = eNext(e1);
+
+        aiFace& face = mesh->mFaces[f];
+
+        face.mNumIndices = 3;
+        face.mIndices = new unsigned int[3];
+
+        face.mIndices[0] = eVertex(e0);
+        face.mIndices[1] = eVertex(e1);
+        face.mIndices[2] = eVertex(e2);
+    }
+
+    return mesh;
 }
 
 void Mesh::computeIndices()
 {
-    m_indices.resize(m_faceEdges.size() * 3);
+    m_indices.clear();
+    m_indices.reserve(m_faceEdges.size() * 3);
 
     for (unsigned int i = 0; i < m_faceEdges.size(); ++i) {
-        mesh_index e0 = m_faceEdges[i], e1 = eNext(e0), e2 = eNext(e1);
-        m_indices[i*3 + 0] = eVertex(e0);
-        m_indices[i*3 + 1] = eVertex(e1);
-        m_indices[i*3 + 2] = eVertex(e2);
+        mesh_index e0 = m_faceEdges[i];
+        if (!is_valid(e0)) continue;
+
+        mesh_index e1 = eNext(e0), e2 = eNext(e1);
+        m_indices.push_back(eVertex(e0));
+        m_indices.push_back(eVertex(e1));
+        m_indices.push_back(eVertex(e2));
     }
 }
 
@@ -162,9 +191,25 @@ void Mesh::reset()
     processImportedMesh();
 }
 
-QVector3D Mesh::eVector(mesh_index e) const
+glm::vec3 Mesh::eVector(mesh_index e) const
 {
     return vPosition(eEndVertex(e)) - vPosition(eStartVertex(e));
+}
+
+glm::vec3 Mesh::eDirection(mesh_index e) const
+{
+    return glm::normalize(eVector(e));
+}
+
+mesh_index Mesh::vConnectingEdge(mesh_index v, mesh_index v1) const
+{
+    for (mesh_index e : vEdgeFan(v)) {
+        if (eEndVertex(e) == v1) {
+            return e;
+        }
+    }
+
+    return inv_index;
 }
 
 unsigned int Mesh::vValency(mesh_index v) const
@@ -173,32 +218,31 @@ unsigned int Mesh::vValency(mesh_index v) const
     return std::distance(eFanBegin(e), eFanEnd(e));
 }
 
-bool Mesh::vIsConnected(mesh_index v, mesh_index v1) const
-{
-    mesh_index edge = vEdge(v);
-    return std::any_of(eFanBegin(edge), eFanEnd(edge), [this, v1] (mesh_index e) {
-        return eEndVertex(e) == v1;
-    });
-}
-
-QVector3D Mesh::fNormal(mesh_index f) const
+glm::vec3 Mesh::fNormal(mesh_index f) const
 {
     mesh_index e0 = fEdge(f), e1 = eNext(e0), e2 = eNext(e1);
-
-    QVector3D p0 = vPosition(eVertex(e0));
-    QVector3D p1 = vPosition(eVertex(e1));
-    QVector3D p2 = vPosition(eVertex(e2));
-
-    QVector3D cp = QVector3D::crossProduct(p1 - p0, p2 - p0);
-    cp.normalize();
-
-    return cp;
+    return triangleNormal(eStartPos(e0), eStartPos(e1), eStartPos(e2));
 }
 
-bool Mesh::isEdgeCollapsible(mesh_index index) const
+float Mesh::fArea(mesh_index f) const
 {
-    mesh_index e0 = index, e1 = eOpposite(e0);
-    mesh_index v0 = eVertex(e0), v1 = eVertex(e1);
+    mesh_index e0 = fEdge(f), e1 = eNext(e0), e2 = eNext(e1);
+    return triangleArea(eStartPos(e0), eStartPos(e1), eStartPos(e2));
+}
+
+bool Mesh::isPairContractable(mesh_index v0, mesh_index v1, const glm::vec3& newPos) const
+{
+    mesh_index e0 = vConnectingEdge(v0, v1);
+    if (!is_valid(e0)) {
+        return false;
+    }
+
+    mesh_index e0n = eNext(e0);
+
+    mesh_index e1 = eOpposite(e0);
+    mesh_index e1n = eNext(e1);
+
+    // phase 1: topological tests
 
     unsigned int bc = 0;
     if (vIsBoundary(v0)) ++bc;
@@ -248,61 +292,29 @@ bool Mesh::isEdgeCollapsible(mesh_index index) const
         }
     }
 
+    // phase 2: geometric tests
+
+    for (mesh_index v : {v0, v1}) {
+        for (mesh_index e : vEdgeFan(v)) {
+            if (!(eIsBoundary(e) || (e == e0) || (e == e1) || (e == e0n) || (e == e1n))) {
+                mesh_index f = eFace(e);
+                glm::vec3 oldNormal = fNormal(f);
+
+                mesh_index en = eNext(e), enn = eNext(en);
+                glm::vec3 newNormal = triangleNormal(newPos, eStartPos(en), eStartPos(enn));
+
+                if (glm::dot(oldNormal, newNormal) < 0.0f)
+                    // pair contraction causes adjacent face to flip: edge not collapsible!
+                    return false;
+            }
+        }
+    }
+
     // all tests passed: edge is collapsible!
     return true;
 }
 
-float Mesh::edgeCollapseCost(mesh_index index) const
-{
-    mesh_index e0 = index, e1 = eOpposite(e0);
-    mesh_index v0 = eVertex(e0), v1 = eVertex(e1);
-
-    /*
-    if (vIsBoundary(v1)) {
-        return std::numeric_limits<float>::max();
-    }
-    */
-
-    std::array<QVector3D, 2> edgeFaceNormals;
-    if (!eIsBoundary(e0)) edgeFaceNormals[0] = fNormal(eFace(e0));
-    if (!eIsBoundary(e1)) edgeFaceNormals[1] = fNormal(eFace(e1));
-
-    // use inverted normal for boundary edges to simulate infinite "sharpness"
-    // this should add a cost penalty to boundary edges
-    if (eIsBoundary(e0)) edgeFaceNormals[0] = -edgeFaceNormals[1];
-    if (eIsBoundary(e1)) edgeFaceNormals[1] = -edgeFaceNormals[0];
-
-    QVector3D p0 = vPosition(v0), p1 = vPosition(v1);
-    QVector3D diff = p1 - p0;
-
-    float l = diff.length();
-
-    float maxCost = std::numeric_limits<float>::min();
-    for (mesh_index e : eFan(e1)) {
-        QVector3D fn;
-        if (!eIsBoundary(e)) {
-            mesh_index f = eFace(e);
-            fn = fNormal(f);
-        } else {
-            fn = -vNormal(v1); // same as above
-        }
-
-        float minCost = std::numeric_limits<float>::max();
-
-        for (QVector3D gn : edgeFaceNormals) {
-            float cost = (1.0f - QVector3D::dotProduct(fn, gn)) * 0.5f;
-            if (cost < minCost)
-                minCost = cost;
-        }
-
-        if (minCost > maxCost)
-            maxCost = minCost;
-    }
-
-    return maxCost * l;
-}
-
-std::vector<mesh_index> Mesh::collapseEdge(mesh_index e)
+unsigned int Mesh::collapseEdge(mesh_index e, const glm::vec3& newPos)
 {
     mesh_index e0 = e, e1 = eOpposite(e0);
     mesh_index v0 = eVertex(e0), v1 = eVertex(e1);
@@ -314,9 +326,6 @@ std::vector<mesh_index> Mesh::collapseEdge(mesh_index e)
     } else if (ve0 == e0) { // reassign vertex edge if it is about to be removed
         if (eIsBoundary(e0)) {
             nve = vEdge(v1);
-            if (nve == e1) {
-                runVertexTest(v1);
-            }
         } else {
             nve = eOpposite(ePrev(e0));
         }
@@ -325,12 +334,13 @@ std::vector<mesh_index> Mesh::collapseEdge(mesh_index e)
     }
 
     m_vertexEdges[v0] = nve;
+    m_vertexPositions[v0] = newPos;
 
     for (mesh_index edge : vEdgeFan(v1)) {
         m_edges[edge].m_vertex = v0;
     }
 
-    std::vector<mesh_index> deletedEdges, deletedFaces;
+    unsigned int dfc = 0;
 
     for (mesh_index edge : {e0, e1}) {
         if (!eIsBoundary(edge)) {
@@ -347,20 +357,24 @@ std::vector<mesh_index> Mesh::collapseEdge(mesh_index e)
             m_edges[peo].m_opposite = neo;
             m_edges[neo].m_opposite = peo;
 
-            deletedFaces.push_back(eFace(edge));
-            deletedEdges.insert(deletedEdges.end(), {pe, ne});
+
+            // invalidate removed primitives to mark them for deletion
+            m_faceEdges[eFace(edge)] = inv_index;
+
+            m_edges[pe] = inv_edge;
+            m_edges[ne] = inv_edge;
         }
 
-        deletedEdges.push_back(edge);
+        ++dfc;
+
+        m_edges[edge] = inv_edge;
     }
 
-    deleteVertex(v1);
-    deleteFaces(deletedFaces);
-    deleteEdges(deletedEdges);
+    m_vertexEdges[v1] = inv_index;
 
-    //runTests();
+    runVertexTest(v0);
 
-    return deletedEdges;
+    return dfc;
 }
 
 mesh_index Mesh::duplicateVertex(mesh_index v)
@@ -370,20 +384,42 @@ mesh_index Mesh::duplicateVertex(mesh_index v)
     mesh_index ve = m_vertexEdges[v];
     m_vertexEdges.push_back(ve);
 
-    QVector3D vp = m_vertexPositions[v];
+    glm::vec3 vp = m_vertexPositions[v];
     m_vertexPositions.push_back(vp);
 
-    QVector3D vn = m_vertexNormals[v];
+    glm::vec3 vn = m_vertexNormals[v];
     m_vertexNormals.push_back(vn);
 
     return nv;
 }
 
-void Mesh::deleteVertex(mesh_index v)
+void Mesh::cleanupData()
 {
-    mesh_index l = m_vertexEdges.size() - 1;
+    cleanupPrimitives(m_faceEdges, [this] (mesh_index f, mesh_index l) {
+        m_faceEdges[f] = m_faceEdges[l];
+        mesh_index e0 = m_faceEdges[f], e1 = eNext(e0), e2 = eNext(e1);
+        m_edges[e0].m_face = f;
+        m_edges[e1].m_face = f;
+        m_edges[e2].m_face = f;
+    });
 
-    if (v != l) {
+    cleanupPrimitives(m_edges, [this] (mesh_index e, mesh_index l) {
+        m_edges[e] = m_edges[l];
+
+        m_edges[eOpposite(e)].m_opposite = e;
+        m_edges[eNext(e)].m_previous = e;
+        m_edges[ePrev(e)].m_next = e;
+
+        mesh_index f = eFace(e);
+        if (m_faceEdges[f] == l)
+            m_faceEdges[f] = e;
+
+        mesh_index v = eVertex(e);
+        if (m_vertexEdges[v] == l)
+            m_vertexEdges[v] = e;
+    });
+
+    cleanupPrimitives(m_vertexEdges, [this] (mesh_index v, mesh_index l) {
         m_vertexEdges[v] = m_vertexEdges[l];
         m_vertexPositions[v] = m_vertexPositions[l];
         m_vertexNormals[v] = m_vertexNormals[l];
@@ -391,76 +427,10 @@ void Mesh::deleteVertex(mesh_index v)
         for (mesh_index e : vEdgeFan(v)) {
             m_edges[e].m_vertex = v;
         }
-    }
+    });
 
-    m_vertexEdges.pop_back();
-    m_vertexPositions.pop_back();
-    m_vertexNormals.pop_back();
-}
-
-void Mesh::deleteEdges(std::vector<mesh_index> deletedEdges)
-{
-    for (unsigned int i = 0; i < deletedEdges.size(); ++i) {
-        mesh_index e = deletedEdges[i];
-        mesh_index l = m_edges.size() - 1;
-
-        if (e != l) {
-            bool d = false;
-            for (unsigned int j = i; j < deletedEdges.size(); ++j) {
-                if (deletedEdges[j] == l) {
-                    deletedEdges[j] = e;
-                    d = true;
-                }
-            }
-
-            if (!d) {
-                m_edges[e] = m_edges[l];
-
-                m_edges[eOpposite(e)].m_opposite = e;
-                m_edges[eNext(e)].m_previous = e;
-                m_edges[ePrev(e)].m_next = e;
-
-                mesh_index f = eFace(e);
-                if (m_faceEdges[f] == l)
-                    m_faceEdges[f] = e;
-
-                mesh_index v = eVertex(e);
-                if (m_vertexEdges[v] == l)
-                    m_vertexEdges[v] = e;
-            }
-        }
-
-        m_edges.pop_back();
-    }
-}
-
-void Mesh::deleteFaces(std::vector<mesh_index> deletedFaces)
-{
-    for (unsigned int i = 0; i < deletedFaces.size(); ++i) {
-        mesh_index f = deletedFaces[i];
-        mesh_index l = m_faceEdges.size() - 1;
-
-        if (f != l) {
-            bool d = false;
-            for (unsigned int j = i; j < deletedFaces.size(); ++j) {
-                if (deletedFaces[j] == l) {
-                    deletedFaces[j] = f;
-                    d = true;
-                }
-            }
-
-            if (!d) {
-                m_faceEdges[f] = m_faceEdges[l];
-
-                mesh_index e0 = m_faceEdges[f], e1 = eNext(e0), e2 = eNext(e1);
-                m_edges[e0].m_face = f;
-                m_edges[e1].m_face = f;
-                m_edges[e2].m_face = f;
-            }
-        }
-
-        m_faceEdges.pop_back();
-    }
+    m_vertexPositions.resize(m_vertexEdges.size());
+    m_vertexNormals.resize(m_vertexEdges.size());
 }
 
 void Mesh::runTests()
@@ -533,97 +503,10 @@ void Mesh::runEdgeTest(mesh_index e)
     }
 }
 
-void Mesh::decimate(unsigned int targetFaceCount, std::function<bool(float)> progressCallback)
-{
-    std::vector<bool> edgesCollapsible(m_edges.size());
-    std::vector<float> edgeCosts(m_edges.size());
-
-    std::vector<mesh_index> dirtyEdges(m_edges.size());
-    std::iota(dirtyEdges.begin(), dirtyEdges.end(), 0); // all edges are dirty to begin with
-
-    unsigned int diff = faceCount() - targetFaceCount;
-
-    while (faceCount() > targetFaceCount) {
-
-        // calculate whether edges can be collapsed and their costs, but only for "dirty" edges
-        for (mesh_index e : dirtyEdges) {
-            edgesCollapsible[e] = isEdgeCollapsible(e);
-            if (edgesCollapsible[e])
-                edgeCosts[e] = edgeCollapseCost(e);
-            else
-                edgeCosts[e] = std::numeric_limits<float>::max();
-        }
-
-        dirtyEdges.clear(); // reset dirty edges
-
-        // find collapsible edge with lowest cost
-        float minCost = std::numeric_limits<float>::max();
-        mesh_index edge = inv_index;
-        for (mesh_index e = 0; e < edgeCosts.size(); ++e) {
-            if (edgesCollapsible[e] && (edgeCosts[e] < minCost)) {
-                minCost = edgeCosts[e];
-                edge = e;
-            }
-        }
-
-        if (!is_valid(edge)) // no more collapsible edges! abort.
-            break;
-
-        mesh_index startVertex = eVertex(edge);
-
-        std::vector<mesh_index> deletedEdges = collapseEdge(edge);
-
-        for (unsigned int i = 0; i < deletedEdges.size(); ++i) {
-            mesh_index e = deletedEdges[i];
-            mesh_index l = edgesCollapsible.size() - 1;
-
-            if (e != l) {
-                for (unsigned int j = i; j < deletedEdges.size(); ++j) {
-                    if (deletedEdges[j] == l) {
-                        deletedEdges[j] = e;
-                    }
-                }
-
-                edgesCollapsible[e] = edgesCollapsible[l];
-                edgeCosts[e] = edgeCosts[l];
-            }
-
-            edgesCollapsible.pop_back();
-            edgeCosts.pop_back();
-        }
-
-        if (vertexCount() < 4) { // if vertex count drops below 4, all edges become dirty
-            dirtyEdges.resize(m_edges.size());
-            std::iota(dirtyEdges.begin(), dirtyEdges.end(), 0);
-
-        } else { // otherwise, only mark certain edges as dirty
-
-            // iterate edge fan around the start vertex of the previously collapsed edge
-            for (mesh_index e : vEdgeFan(startVertex)) {
-                dirtyEdges.push_back(e);
-                dirtyEdges.push_back(eOpposite(e));
-
-                if (!eIsBoundary(e)) {
-                    mesh_index ne = eNext(e);
-                    dirtyEdges.push_back(ne);
-                    dirtyEdges.push_back(eOpposite(ne));
-                }
-            }
-        }
-
-        unsigned int d = faceCount() - targetFaceCount;
-        float p = 1.0f - (float(d) / float(diff));
-
-        if (progressCallback(p)) {
-            break;
-        }
-    }
-}
-
 void Mesh::recomputeNormals()
 {
     for (mesh_index v = 0; v < m_vertexEdges.size(); ++v) {
-        QVector3D normal;
+        glm::vec3 normal;
 
         for (mesh_index e : vEdgeFan(v)) {
             if (eIsBoundary(e))
@@ -632,8 +515,6 @@ void Mesh::recomputeNormals()
             normal += fNormal(eFace(e));
         }
 
-        normal.normalize();
-
-        m_vertexNormals[v] = normal;
+        m_vertexNormals[v] = glm::normalize(normal);
     }
 }

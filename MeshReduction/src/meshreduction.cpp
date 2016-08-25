@@ -2,10 +2,13 @@
 
 #include "scenefile.hpp"
 #include "mesh.hpp"
+#include "mesh_decimator.hpp"
+#include "exportdialog.hpp"
 
 #include <QtWidgets\QFileDialog>
 #include <QtWidgets\QMessageBox>
 #include <QSettings>
+#include <QThread>
 #include <QProgressDialog>
 
 MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
@@ -36,6 +39,7 @@ MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
     connect(ui.actionDraw_Wireframe, SIGNAL(toggled(bool)), m_glWidget, SLOT(setDrawWireframe(bool)));
 
     connect(ui.actionOpen, SIGNAL(triggered(bool)), this, SLOT(openFile()));
+    connect(ui.actionExport, SIGNAL(triggered(bool)), this, SLOT(showExportDialog()));
     connect(ui.actionExit, SIGNAL(triggered(bool)), this, SLOT(close()));
     connect(ui.actionClose, SIGNAL(triggered(bool)), this, SLOT(closeFile()));
     connect(ui.actionClear_List, SIGNAL(triggered(bool)), this, SLOT(clearRecentFiles()));
@@ -43,6 +47,11 @@ MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
     connect(ui.actionReset_Mesh, SIGNAL(triggered(bool)), this, SLOT(resetMesh()));
 
     connect(ui.decimateButton, SIGNAL(clicked(bool)), this, SLOT(decimateMesh()));
+    connect(ui.resetButton, SIGNAL(clicked(bool)), this, SLOT(resetMesh()));
+
+    connect(ui.targetFaceCount, SIGNAL(editingFinished()), this, SLOT(onSetTargetFaceCount()));
+    connect(ui.percentageBox, SIGNAL(editingFinished()), this, SLOT(onSetPercentageBox()));
+    connect(ui.percentageSlider, SIGNAL(sliderMoved(int)), this, SLOT(onSetPercentageSlider()));
 
     QAction* firstAction = nullptr;
     if (!ui.menuRecent_Files->actions().isEmpty())
@@ -158,6 +167,7 @@ void MeshReduction::setCurrentFile(SceneFile* file)
 
         ui.sceneSideBar->setEnabled(isFile);
         ui.actionClose->setEnabled(isFile);
+        ui.actionExport->setEnabled(isFile);
     }
 }
 
@@ -172,34 +182,38 @@ void MeshReduction::handleMeshSelection(int index)
 
 void MeshReduction::updateMeshProperties()
 {
-    QString meshName = "";
-    QString vertexCount = "";
-    QString edgeCount = "";
-    QString faceCount = "";
-    QString origFaceCount = "";
+    QString meshName;
+    QString vertexCount, edgeCount, faceCount;
+    QString origVertexCount, origEgdeCount, origFaceCount;
 
     unsigned int fc = 0, ofc = 0;
 
     if (m_selectedMesh) {
+        meshName = getFormattedMeshName(m_selectedMesh);
+
         fc = m_selectedMesh->faceCount();
         ofc = m_selectedMesh->importedFaceCount();
 
-        meshName = getFormattedMeshName(m_selectedMesh);
         vertexCount = tr("%1").arg(m_selectedMesh->vertexCount());
         edgeCount = tr("%1").arg(m_selectedMesh->edgeCount());
         faceCount = tr("%1").arg(fc);
+
+        origVertexCount = tr("%1").arg(m_selectedMesh->importedVertexCount());
+        origEgdeCount = tr("%1").arg(m_selectedMesh->importedEdgeCount());
         origFaceCount = tr("%1").arg(ofc);
     }
 
-    ui.meshNameLabel->setText(meshName);
-    ui.meshNameLabel->setToolTip(meshName);
-    ui.vertexCountLabel->setText(vertexCount);
-    ui.edgeCountLabel->setText(edgeCount);
-    ui.faceCountLabel->setText(faceCount);
-    ui.originalFaceCountLabel->setText(origFaceCount);
+    ui.primitivesTable->setItem(0, 0, new QTableWidgetItem(vertexCount));
+    ui.primitivesTable->setItem(0, 1, new QTableWidgetItem(origVertexCount));
+    ui.primitivesTable->setItem(1, 0, new QTableWidgetItem(edgeCount));
+    ui.primitivesTable->setItem(1, 1, new QTableWidgetItem(origEgdeCount));
+    ui.primitivesTable->setItem(2, 0, new QTableWidgetItem(faceCount));
+    ui.primitivesTable->setItem(2, 1, new QTableWidgetItem(origFaceCount));
 
     ui.targetFaceCount->setMaximum(ofc);
     ui.targetFaceCount->setValue(fc);
+
+    onSetTargetFaceCount();
 }
 
 void MeshReduction::resetMesh()
@@ -215,34 +229,30 @@ void MeshReduction::decimateMesh()
 {
     if (m_selectedMesh != nullptr) {
         unsigned int targetFaceCount = ui.targetFaceCount->value();
-        if (targetFaceCount > m_selectedMesh->faceCount()) {
+        unsigned int currentFaceCount = m_selectedMesh->faceCount();
+        if (targetFaceCount > currentFaceCount) {
             m_selectedMesh->reset();
         }
 
-        const int maxProgress = 100;
+        QProgressDialog* progress = new QProgressDialog(tr("Decimating Mesh..."), tr("Abort"), 0, 100, this);
+        progress->setWindowModality(Qt::WindowModal);
 
-        QProgressDialog progress("Decimating mesh.", "Cancel", 0, maxProgress, this);
-        progress.setWindowModality(Qt::WindowModal);
+        QThread* thread = new QThread(this);
+        MeshDecimator* decimator = new MeshDecimator(m_selectedMesh, targetFaceCount);
 
-        auto fun = [&progress] (float p) {
-            progress.setValue(int(maxProgress * p));
-            return progress.wasCanceled();
-        };
+        decimator->moveToThread(thread);
 
-        progress.setValue(0);
+        connect(thread, SIGNAL(started()), decimator, SLOT(start()));
+        connect(decimator, SIGNAL(finished()), thread, SLOT(quit()));
+        connect(decimator, SIGNAL(progressChanged(int)), progress, SLOT(setValue(int)));
+        connect(thread, SIGNAL(finished()), decimator, SLOT(deleteLater()));
+        connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
+        connect(thread, SIGNAL(finished()), this, SIGNAL(meshChanged()));
 
-        try {
-            m_selectedMesh->decimate(targetFaceCount, fun);
+        connect(progress, SIGNAL(canceled()), decimator, SLOT(abort()), Qt::DirectConnection);
+        connect(decimator, SIGNAL(finished()), progress, SLOT(deleteLater()), Qt::DirectConnection);
 
-            progress.setValue(maxProgress);
-
-        } catch (std::runtime_error& e) {
-            QMessageBox msgBox;
-            msgBox.critical(nullptr, tr("Operation failed!"),
-                            tr("An exception was thrown during execution:\n\"%1\"").arg(e.what()));
-        }
-
-        emit meshChanged();
+        thread->start();
     }
 }
 
@@ -254,6 +264,51 @@ void MeshReduction::selectMesh(Mesh *mesh)
 
         bool isMesh = mesh != nullptr;
         ui.meshSideBar->setEnabled(isMesh);
+    }
+}
+
+void MeshReduction::onSetTargetFaceCount()
+{
+    Mesh* mesh = selectedMesh();
+    if (mesh) {
+        int value = ui.targetFaceCount->value();
+
+        unsigned int original = mesh->importedFaceCount();
+
+        double percentage = 100.0 * (double(value) / double(original));
+
+        ui.percentageBox->setValue(percentage);
+        ui.percentageSlider->setValue(int(percentage));
+    }
+}
+
+void MeshReduction::onSetPercentageBox()
+{
+    Mesh* mesh = selectedMesh();
+    if (mesh) {
+        double value = ui.percentageBox->value();
+
+        unsigned int original = mesh->importedFaceCount();
+
+        double factor = value * 0.01;
+
+        ui.targetFaceCount->setValue(int(original * factor));
+        ui.percentageSlider->setValue(int(value));
+    }
+}
+
+void MeshReduction::onSetPercentageSlider()
+{
+    Mesh* mesh = selectedMesh();
+    if (mesh) {
+        int value = ui.percentageSlider->value();
+
+        unsigned int original = mesh->importedFaceCount();
+
+        double factor = value * 0.01;
+
+        ui.targetFaceCount->setValue(int(original * factor));
+        ui.percentageBox->setValue(double(value));
     }
 }
 
@@ -302,4 +357,10 @@ void MeshReduction::openFile(const QString &fileName)
 void MeshReduction::closeFile()
 {
     setCurrentFile(nullptr);
+}
+
+void MeshReduction::showExportDialog()
+{
+    ExportDialog dialog(m_currentFile.get(), m_selectedMesh, this);
+    dialog.exec();
 }

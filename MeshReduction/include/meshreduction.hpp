@@ -13,6 +13,8 @@
 class SceneFile;
 class Mesh;
 
+class QProgressDialog;
+
 class MeshReduction : public QMainWindow
 {
 	Q_OBJECT
@@ -53,10 +55,15 @@ private slots:
     void openRecentFile();
     void clearRecentFiles();
     void closeFile();
+    void showExportDialog();
     void handleMeshSelection(int index);
     void updateMeshProperties();
     void resetMesh();
     void decimateMesh();
+
+    void onSetTargetFaceCount();
+    void onSetPercentageBox();
+    void onSetPercentageSlider();
 };
 
 #endif // MESHREDUCTION_H

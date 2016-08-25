@@ -7,6 +7,13 @@
 #include <vector>
 #include <memory>
 
+struct ExportFormat
+{
+    QString m_id;
+    QString m_extension;
+    QString m_desc;
+};
+
 class Mesh;
 
 class SceneFile
@@ -14,6 +21,7 @@ class SceneFile
 private:
 	QString m_fileName;
     Assimp::Importer m_importer;
+    const aiScene* m_importedScene;
 
     std::vector<std::unique_ptr<Mesh>> m_meshes;
 
@@ -26,8 +34,14 @@ public:
 
     inline unsigned int numMeshes() const { return m_meshes.size(); }
     inline Mesh* getMesh(unsigned int index) { return m_meshes[index].get(); }
+    inline const Mesh* getMesh(unsigned int index) const { return m_meshes[index].get(); }
+
+    void exportToFile(const QString& fileName, const QString& formatId, const std::vector<bool>& includedMeshMask) const;
 
     static QString getImportExtensions();
+    static QString getExportExtensions();
+
+    static std::vector<ExportFormat> getExportFormats();
 };
 
 #endif

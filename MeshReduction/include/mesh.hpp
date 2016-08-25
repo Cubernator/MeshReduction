@@ -3,6 +3,7 @@
 
 #include "mesh_index.hpp"
 #include "mesh_iterators.hpp"
+#include "util.hpp"
 
 #include <QObject>
 #include <QString>
@@ -42,6 +43,13 @@ struct HalfEdge
     mesh_index m_previous;
 };
 
+const HalfEdge inv_edge ({ inv_index, inv_index, inv_index, inv_index, inv_index });
+
+inline bool is_valid(const HalfEdge& edge)
+{
+    return is_valid(edge.m_vertex) && is_valid(edge.m_face) && is_valid(edge.m_opposite);
+}
+
 class aiMesh;
 
 class Mesh
@@ -49,7 +57,7 @@ class Mesh
 private:
     const aiMesh* m_importedMesh;
 
-    unsigned int m_importedFaceCount;
+    unsigned int m_importedFaceCount, m_importedHalfedgeCount, m_importedVertexCount;
 
     // connectivity information (winged half edge data)
     std::vector<HalfEdge> m_edges;
@@ -57,21 +65,31 @@ private:
     std::vector<mesh_index> m_vertexEdges; // if vertex is boundary: always boundary edge!
 
     // drawing data
-    std::vector<QVector3D> m_vertexPositions, m_vertexNormals;
+    std::vector<glm::vec3> m_vertexPositions, m_vertexNormals;
     std::vector<unsigned int> m_indices;
 
     void processImportedMesh();
     void computeIndices();
 
-    bool isEdgeCollapsible(mesh_index index) const;
-    float edgeCollapseCost(mesh_index index) const;
-    std::vector<mesh_index> collapseEdge(mesh_index e);
-
     mesh_index duplicateVertex(mesh_index v);
 
-    void deleteVertex(mesh_index v);
-    void deleteEdges(std::vector<mesh_index> deletedEdges);
-    void deleteFaces(std::vector<mesh_index> deletedFaces);
+    template<typename T>
+    void cleanupPrimitives(T& container, std::function<void(mesh_index, mesh_index)> replaceFun) {
+        auto begin = container.begin();
+        auto first = begin, last = container.end();
+        first = std::find_if(first, last, [] (const typename T::value_type& elem) { return !is_valid(elem); });
+
+        if (first != last) {
+            for (auto it = first; ++it != last; ) {
+                if (is_valid(*it)) {
+                    replaceFun(first - begin, it - begin);
+                    ++first;
+                }
+            }
+        }
+
+        container.erase(first, last);
+    }
 
     void runTests();
     void runVertexTest(mesh_index v);
@@ -82,6 +100,7 @@ public:
     ~Mesh();
 
     QString name() const;
+    const aiMesh* importedMesh() const;
 
 
     // edge queries
@@ -89,7 +108,11 @@ public:
     mesh_index eStartVertex(mesh_index e) const { return eVertex(e); }
     mesh_index eEndVertex(mesh_index e) const { return eVertex(eOpposite(e)); }
 
-    QVector3D eVector(mesh_index e) const;
+    const glm::vec3& eStartPos(mesh_index e) const { return vPosition(eStartVertex(e)); }
+    const glm::vec3& eEndPos(mesh_index e) const { return vPosition(eEndVertex(e)); }
+
+    glm::vec3 eVector(mesh_index e) const;
+    glm::vec3 eDirection(mesh_index e) const;
 
     mesh_index eFace(mesh_index e) const { return m_edges[e].m_face; }
 
@@ -106,6 +129,7 @@ public:
 
     // vertex queries
     mesh_index vEdge(mesh_index v) const { return m_vertexEdges[v]; }
+    mesh_index vConnectingEdge(mesh_index v, mesh_index v1) const;
 
     edge_fan vEdgeFan(mesh_index v) const { return edge_fan(this, vEdge(v)); }
     edge_fan_iterator vEdgeFanBegin(mesh_index v) const { return eFanBegin(vEdge(v)); }
@@ -114,38 +138,47 @@ public:
     unsigned int vValency(mesh_index v) const;
 
     bool vIsBoundary(mesh_index v) const { return eIsBoundary(vEdge(v)); }
-    bool vIsConnected(mesh_index v, mesh_index v1) const;
+    bool vIsConnected(mesh_index v, mesh_index v1) const { return is_valid(vConnectingEdge(v, v1)); }
 
-    const QVector3D& vPosition(mesh_index v) const { return m_vertexPositions[v]; }
-    const QVector3D& vNormal(mesh_index v) const { return m_vertexNormals[v]; }
+    const glm::vec3& vPosition(mesh_index v) const { return m_vertexPositions[v]; }
+    const glm::vec3& vNormal(mesh_index v) const { return m_vertexNormals[v]; }
 
 
     // face queries
     mesh_index fEdge(mesh_index f) const { return m_faceEdges[f]; }
 
-    QVector3D fNormal(mesh_index f) const;
+    glm::vec3 fNormal(mesh_index f) const;
+    float fArea(mesh_index f) const;
 
 
     void prepareDrawingData();
     void reset();
-    void decimate(unsigned int targetFaceCount, std::function<bool(float)> progressCallback);
     void recomputeNormals();
+    void cleanupData();
+
+    bool isPairContractable(mesh_index v0, mesh_index v1, const glm::vec3& newPos) const;
+    unsigned int collapseEdge(mesh_index e, const glm::vec3& newPos);
 
 
-    // drawing data
-    unsigned int vertexCount() const;
-    unsigned int indexCount() const;
-    unsigned int edgeCount() const;
-    unsigned int faceCount() const;
+    unsigned int vertexCount() const { return m_vertexEdges.size(); }
+    unsigned int indexCount() const { return m_indices.size(); }
+    unsigned int halfedgeCount() const { return m_edges.size(); }
+    unsigned int edgeCount() const { return halfedgeCount() / 2; }
+    unsigned int faceCount() const { return m_faceEdges.size(); }
 
-    unsigned int importedFaceCount() const;
+    unsigned int importedFaceCount() const { return m_importedFaceCount; }
+    unsigned int importedEdgeCount() const { return m_importedHalfedgeCount / 2; }
+    unsigned int importedVertexCount() const { return m_importedVertexCount; }
 
-    unsigned int vertexSize() const;
-    unsigned int normalSize() const;
+    unsigned int vertexSize() const { return sizeof(glm::vec3); }
+    unsigned int normalSize() const { return sizeof(glm::vec3); }
 
-    const QVector3D* vertexData() const;
-    const QVector3D* normalData() const;
-    const unsigned int* indexData() const;
+    const glm::vec3* vertexData() const { return m_vertexPositions.data(); }
+    const glm::vec3* normalData() const { return m_vertexNormals.data(); }
+    const unsigned int* indexData() const { return m_indices.data(); }
+
+
+    aiMesh* makeExportMesh() const;
 };
 
 #endif // MESH_HPP

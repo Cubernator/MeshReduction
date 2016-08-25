@@ -23,6 +23,11 @@ CONFIG(debug, debug|release):CONFIGDIR = ./debug
 CONFIG(debug, release|debug):DEFINES += _DEBUG
 
 OBJECTS_DIR = $$CONFIGDIR/.obj
+MOC_DIR = $$CONFIGDIR/.moc
+RCC_DIR = $$CONFIGDIR/.rcc
+UI_DIR = $$CONFIGDIR/.ui
+
+DESTDIR = $$CONFIGDIR/build
 
 msvc {
     CONFIG(release, debug|release):LIBS += -lassimp
