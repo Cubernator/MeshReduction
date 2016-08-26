@@ -11,7 +11,7 @@
 #include <QThread>
 #include <QProgressDialog>
 
-MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
+MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent), m_isDecimating(false)
 {
     QCoreApplication::setApplicationName("MeshReduction");
     QCoreApplication::setOrganizationName("VectorSmash");
@@ -35,6 +35,7 @@ MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent)
     connect(this, SIGNAL(meshChanged()), this, SLOT(updateMeshProperties()));
 
     connect(ui.actionReset_View, SIGNAL(triggered(bool)), m_glWidget, SLOT(resetView()));
+    connect(ui.actionRefresh, SIGNAL(triggered(bool)), this, SIGNAL(meshChanged()));
     connect(ui.actionDraw_Faces, SIGNAL(toggled(bool)), m_glWidget, SLOT(setDrawFaces(bool)));
     connect(ui.actionDraw_Wireframe, SIGNAL(toggled(bool)), m_glWidget, SLOT(setDrawWireframe(bool)));
 
@@ -218,7 +219,7 @@ void MeshReduction::updateMeshProperties()
 
 void MeshReduction::resetMesh()
 {
-    if (m_selectedMesh != nullptr) {
+    if ((m_selectedMesh != nullptr) && !m_isDecimating) {
         m_selectedMesh->reset();
 
         emit meshChanged();
@@ -227,15 +228,17 @@ void MeshReduction::resetMesh()
 
 void MeshReduction::decimateMesh()
 {
-    if (m_selectedMesh != nullptr) {
+    if ((m_selectedMesh != nullptr) && !m_isDecimating) {
         unsigned int targetFaceCount = ui.targetFaceCount->value();
         unsigned int currentFaceCount = m_selectedMesh->faceCount();
         if (targetFaceCount > currentFaceCount) {
             m_selectedMesh->reset();
         }
 
-        QProgressDialog* progress = new QProgressDialog(tr("Decimating Mesh..."), tr("Abort"), 0, 100, this);
-        progress->setWindowModality(Qt::WindowModal);
+        m_progressDialog.reset(new QProgressDialog(tr("Decimating Mesh..."), tr("Abort"), 0, 100, this));
+        m_progressDialog->setWindowModality(Qt::WindowModal);
+        m_progressDialog->setMinimumDuration(2000);
+        m_progressDialog->setValue(0);
 
         QThread* thread = new QThread(this);
         MeshDecimator* decimator = new MeshDecimator(m_selectedMesh, targetFaceCount);
@@ -244,16 +247,40 @@ void MeshReduction::decimateMesh()
 
         connect(thread, SIGNAL(started()), decimator, SLOT(start()));
         connect(decimator, SIGNAL(finished()), thread, SLOT(quit()));
-        connect(decimator, SIGNAL(progressChanged(int)), progress, SLOT(setValue(int)));
+        connect(decimator, SIGNAL(progressChanged(float)), this, SLOT(onDecimateProgress(float)));
         connect(thread, SIGNAL(finished()), decimator, SLOT(deleteLater()));
         connect(thread, SIGNAL(finished()), thread, SLOT(deleteLater()));
-        connect(thread, SIGNAL(finished()), this, SIGNAL(meshChanged()));
+        connect(thread, SIGNAL(finished()), this, SLOT(onFinishDecimating()));
 
-        connect(progress, SIGNAL(canceled()), decimator, SLOT(abort()), Qt::DirectConnection);
-        connect(decimator, SIGNAL(finished()), progress, SLOT(deleteLater()), Qt::DirectConnection);
+        connect(m_progressDialog.get(), SIGNAL(canceled()), decimator, SLOT(abort()), Qt::DirectConnection);
+
+        connect(thread, SIGNAL(started()), this, SLOT(onStartDecimating()));
+        connect(thread, SIGNAL(finished()), this, SLOT(onFinishDecimating()));
 
         thread->start();
     }
+}
+
+void MeshReduction::onDecimateProgress(float value)
+{
+    if (m_progressDialog && (value >= 0.0f && value <= 1.0f)) {
+        int p = m_progressDialog->maximum() * value;
+        m_progressDialog->setValue(p);
+    }
+}
+
+void MeshReduction::onStartDecimating()
+{
+    setIsDecimating(true);
+}
+
+void MeshReduction::onFinishDecimating()
+{
+    setIsDecimating(false);
+
+    m_progressDialog.reset();
+
+    emit meshChanged();
 }
 
 void MeshReduction::selectMesh(Mesh *mesh)
@@ -320,6 +347,15 @@ void MeshReduction::populateMeshList()
             ui.meshList->addItem(getFormattedMeshName(m_currentFile->getMesh(i)));
         }
     }
+}
+
+void MeshReduction::setIsDecimating(bool value)
+{
+    m_isDecimating = value;
+
+    ui.decimateButton->setEnabled(!value);
+    ui.resetButton->setEnabled(!value);
+    ui.actionReset_Mesh->setEnabled(!value);
 }
 
 void MeshReduction::openFile()

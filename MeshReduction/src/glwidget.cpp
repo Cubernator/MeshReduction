@@ -108,6 +108,8 @@ void GLWidget::resetView()
 
 void GLWidget::initMesh()
 {
+    QMutexLocker ml(m_currentMesh->mutex());
+
     m_currentMesh->prepareDrawingData();
 
     m_vao.create();

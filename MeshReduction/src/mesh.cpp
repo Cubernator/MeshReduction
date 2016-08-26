@@ -122,6 +122,8 @@ void Mesh::processImportedMesh()
         }
     }
 
+    m_vertexCount = m_vertexEdges.size();
+
     m_importedFaceCount = faceCount();
     m_importedHalfedgeCount = halfedgeCount();
     m_importedVertexCount = vertexCount();
@@ -248,22 +250,27 @@ bool Mesh::isPairContractable(mesh_index v0, mesh_index v1, const glm::vec3& new
     if (vIsBoundary(v0)) ++bc;
     if (vIsBoundary(v1)) ++bc;
 
-    unsigned int vCount = vertexCount();
+    unsigned int vCount = m_vertexCount;
 
     if (bc == 0) { // neither v0 nor v1 are boundary
-        if (vCount < 4)
-            // mesh contains less than 4 vertices: edge is not collapsible!
+        if (vCount <= 4)
+            // mesh contains no more than 4 vertices: edge is not collapsible!
             return false;
 
     } else if (bc == 1) { // either v0 or v1 are boundary
-        if (vCount < 3)
-            // mesh contains less than 3 vertices: edge is not collapsible!
+        if (vCount <= 3)
+            // mesh contains no more than 3 vertices: edge is not collapsible!
             return false;
 
     } else { // both v0 and v1 are boundary
         if (!(eIsBoundary(e0) || eIsBoundary(e1)))
             // edge between v0 and v1 is not boundary: edge is not collapsible!
             return false;
+    }
+
+    unsigned int val0 = vValency(v0), val1 = vValency(v1);
+    if (val0 <= 3 && val1 <= 3) {
+        return false;
     }
 
 
@@ -321,6 +328,10 @@ unsigned int Mesh::collapseEdge(mesh_index e, const glm::vec3& newPos)
 
     mesh_index ve0 = vEdge(v0), nve = ve0;
 
+    if (e == 50123) {
+        qDebug() << "RELEASE ME";
+    }
+
     if ((!vIsBoundary(v0)) && vIsBoundary(v1)) {
         nve = vEdge(v1);
     } else if (ve0 == e0) { // reassign vertex edge if it is about to be removed
@@ -371,6 +382,7 @@ unsigned int Mesh::collapseEdge(mesh_index e, const glm::vec3& newPos)
     }
 
     m_vertexEdges[v1] = inv_index;
+    --m_vertexCount;
 
     runVertexTest(v0);
 
@@ -431,6 +443,8 @@ void Mesh::cleanupData()
 
     m_vertexPositions.resize(m_vertexEdges.size());
     m_vertexNormals.resize(m_vertexEdges.size());
+
+    assert(m_vertexCount == m_vertexEdges.size());
 }
 
 void Mesh::runTests()
@@ -446,6 +460,12 @@ void Mesh::runTests()
 
 void Mesh::runVertexTest(mesh_index v)
 {
+    if (!vIsBoundary(v)) {
+        if (vValency(v) < 3) {
+            qDebug() << "anomaly detected!";
+        }
+    }
+
     mesh_index e = vEdge(v);
 
     for (mesh_index f : vEdgeFan(v)) {

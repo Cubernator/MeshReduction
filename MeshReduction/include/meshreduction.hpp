@@ -22,15 +22,21 @@ class MeshReduction : public QMainWindow
 private:
 	Ui::MeshReductionClass ui;
 
+    bool m_isDecimating;
+
 	std::unique_ptr<SceneFile> m_currentFile;
     Mesh* m_selectedMesh;
 	GLWidget* m_glWidget;
+
+    std::unique_ptr<QProgressDialog> m_progressDialog;
 
     QAction* m_recentFileActions[MAX_RECENTFILES];
 
     void openFile(const QString& fileName);
     void updateRecentFileActions();
     void populateMeshList();
+
+    void setIsDecimating(bool value);
 
 public:
 	MeshReduction(QWidget *parent = 0);
@@ -60,6 +66,9 @@ private slots:
     void updateMeshProperties();
     void resetMesh();
     void decimateMesh();
+    void onDecimateProgress(float value);
+    void onStartDecimating();
+    void onFinishDecimating();
 
     void onSetTargetFaceCount();
     void onSetPercentageBox();

@@ -5,9 +5,8 @@
 #include "mesh_iterators.hpp"
 #include "util.hpp"
 
-#include <QObject>
 #include <QString>
-#include <QVector3D>
+#include <QMutex>
 
 #include <vector>
 #include <algorithm>
@@ -57,7 +56,10 @@ class Mesh
 private:
     const aiMesh* m_importedMesh;
 
+    mutable QMutex m_mutex;
+
     unsigned int m_importedFaceCount, m_importedHalfedgeCount, m_importedVertexCount;
+    unsigned int m_vertexCount;
 
     // connectivity information (winged half edge data)
     std::vector<HalfEdge> m_edges;
@@ -101,6 +103,8 @@ public:
 
     QString name() const;
     const aiMesh* importedMesh() const;
+
+    QMutex* mutex() const { return &m_mutex; }
 
 
     // edge queries

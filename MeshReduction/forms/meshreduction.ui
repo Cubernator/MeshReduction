@@ -437,6 +437,7 @@
     <addaction name="actionDraw_Wireframe"/>
     <addaction name="separator"/>
     <addaction name="actionReset_View"/>
+    <addaction name="actionRefresh"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
@@ -542,6 +543,14 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+F</string>
+   </property>
+  </action>
+  <action name="actionRefresh">
+   <property name="text">
+    <string>Refresh</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
    </property>
   </action>
  </widget>

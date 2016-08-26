@@ -49,6 +49,8 @@ void MeshDecimator::computeQuadrics()
 void MeshDecimator::computePairCost(std::size_t p)
 {
     VertexPair& pair = m_pairs[p];
+    float oldCost = pair.m_cost;
+
     Quadric Q = m_quadrics[pair.m_v0] + m_quadrics[pair.m_v1];
 
     if (!Q.optimum(&pair.m_newPos, &pair.m_cost)) {
@@ -64,6 +66,13 @@ void MeshDecimator::computePairCost(std::size_t p)
                 pair.m_newPos = pos;
             }
         }
+    }
+
+    if (!pair.isRemoved()) { // fix priority queue
+        if (pair.m_cost < oldCost)
+            m_pairsByCost.decrease(pair.m_handle);
+        else if (pair.m_cost > oldCost)
+            m_pairsByCost.increase(pair.m_handle);
     }
 }
 
@@ -102,21 +111,20 @@ void MeshDecimator::cleanupPairs()
 void MeshDecimator::initHelpers()
 {
     m_pairsByCost.clear();
-    m_pairsByCost.reserve(m_pairs.size());
 
     m_pairsByVertex.clear();
     m_pairsByVertex.reserve(m_pairs.size());
 
     for (std::size_t p = 0; p < m_pairs.size(); ++p) {
-        const VertexPair& pair = m_pairs[p];
+        VertexPair& pair = m_pairs[p];
 
         if (!pair.isValid()) continue;
 
         m_pairsByVertex.emplace(pair.m_v0, p);
         m_pairsByVertex.emplace(pair.m_v1, p);
 
-        m_pairsByCost.push_back(p);
-        std::push_heap(m_pairsByCost.begin(), m_pairsByCost.end(), m_costComparer);
+        pair.m_handle = m_pairsByCost.push(p);
+        pair.unremove();
     }
 }
 
@@ -126,7 +134,7 @@ bool MeshDecimator::isPairContractable(const MeshDecimator::VertexPair &pair) co
 }
 
 MeshDecimator::MeshDecimator(Mesh *mesh, unsigned int targetFaceCount) :
-    m_mesh(mesh), m_targetFaceCount(targetFaceCount), m_abort(false), m_costComparer(m_pairs)
+    m_mesh(mesh), m_targetFaceCount(targetFaceCount), m_abort(false), m_costComparer(m_pairs), m_pairsByCost(m_costComparer)
 {
     m_lastAttemptFaceCount = m_oldFaceCount = m_currentFaceCount = m_mesh->faceCount();
 }
@@ -146,9 +154,8 @@ bool MeshDecimator::iterate()
         initHelpers();
     }
 
-    std::size_t p = m_pairsByCost.back();
-    std::pop_heap(m_pairsByCost.begin(), m_pairsByCost.end(), m_costComparer);
-    m_pairsByCost.pop_back();
+    std::size_t p = m_pairsByCost.top();
+    m_pairsByCost.pop();
 
     VertexPair& curPair = m_pairs[p];
     curPair.remove();
@@ -188,7 +195,8 @@ bool MeshDecimator::iterate()
 
     auto v0Range = m_pairsByVertex.equal_range(v0);
     for (auto it = v0Range.first; it != v0Range.second; ++it) {
-        VertexPair& pair = m_pairs[it->second];
+        std::size_t pi = it->second;
+        VertexPair& pair = m_pairs[pi];
         mesh_index ov = (pair.m_v0 == v0) ? pair.m_v1 : pair.m_v0;
 
         if (!pair.isValid())
@@ -198,7 +206,7 @@ bool MeshDecimator::iterate()
             pair.invalidate();
         } else {
             duplicateHelper.insert(ov);
-            computePairCost(it->second);
+            computePairCost(pi);
         }
 
         auto ovRange = m_pairsByVertex.equal_range(ov);
@@ -207,15 +215,12 @@ bool MeshDecimator::iterate()
             VertexPair& vpair = m_pairs[vp];
             if (vpair.isValid() && vpair.isRemoved()) {
                 if (isPairContractable(vpair)) {
-                    m_pairsByCost.push_back(vp); // a recently removed pair has become valid again! re-add it to the heap
+                    vpair.m_handle = m_pairsByCost.push(vp); // a recently removed pair has become valid again! re-add it to the heap
                     vpair.unremove();
                 }
             }
         }
     }
-
-    // rebuild heap
-    std::make_heap(m_pairsByCost.begin(), m_pairsByCost.end(), m_costComparer);
 
     if (m_currentFaceCount <= m_targetFaceCount)
         return false;
@@ -234,14 +239,14 @@ MeshDecimator::~MeshDecimator()
     m_mesh->recomputeNormals();
 }
 
-int MeshDecimator::progress() const
+float MeshDecimator::progress() const
 {
     unsigned int startDiff = m_oldFaceCount - m_targetFaceCount;
     unsigned int diff = m_currentFaceCount - m_targetFaceCount;
-    if (m_currentFaceCount <= m_targetFaceCount) diff = 0;
+    if (m_currentFaceCount < m_targetFaceCount) diff = 0;
 
     float p = 1.0f - (float(diff) / float(startDiff));
-    return 100 * p;
+    return p;
 }
 
 bool MeshDecimator::isAborting() const
@@ -260,6 +265,8 @@ void MeshDecimator::abort()
 
 void MeshDecimator::start()
 {
+    QMutexLocker ml(m_mesh->mutex());
+
     try {
         computeQuadrics();
         initPairs();
