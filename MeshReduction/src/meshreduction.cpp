@@ -15,7 +15,7 @@ MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent), m_isDecimat
 {
     QCoreApplication::setApplicationName("MeshReduction");
     QCoreApplication::setOrganizationName("VectorSmash");
-    QCoreApplication::setApplicationVersion("v0.1");
+    QCoreApplication::setApplicationVersion("v1.0");
 
     QGuiApplication::setApplicationDisplayName("MeshReduction");
 
@@ -73,6 +73,11 @@ MeshReduction::MeshReduction(QWidget *parent) : QMainWindow(parent), m_isDecimat
 
 MeshReduction::~MeshReduction()
 {
+}
+
+unsigned int MeshReduction::targetFaceCount() const
+{
+    return ui.targetFaceCount->value();
 }
 
 QString MeshReduction::getFormattedMeshName(const Mesh *mesh)
@@ -222,6 +227,8 @@ void MeshReduction::resetMesh()
     if ((m_selectedMesh != nullptr) && !m_isDecimating) {
         m_selectedMesh->reset();
 
+        statusBar()->showMessage(tr("Reset Mesh."));
+
         emit meshChanged();
     }
 }
@@ -229,19 +236,13 @@ void MeshReduction::resetMesh()
 void MeshReduction::decimateMesh()
 {
     if ((m_selectedMesh != nullptr) && !m_isDecimating) {
-        unsigned int targetFaceCount = ui.targetFaceCount->value();
-        unsigned int currentFaceCount = m_selectedMesh->faceCount();
-        if (targetFaceCount > currentFaceCount) {
-            m_selectedMesh->reset();
-        }
-
         m_progressDialog.reset(new QProgressDialog(tr("Decimating Mesh..."), tr("Abort"), 0, 100, this));
         m_progressDialog->setWindowModality(Qt::WindowModal);
         m_progressDialog->setMinimumDuration(2000);
         m_progressDialog->setValue(0);
 
         QThread* thread = new QThread(this);
-        MeshDecimator* decimator = new MeshDecimator(m_selectedMesh, targetFaceCount);
+        MeshDecimator* decimator = new MeshDecimator(m_selectedMesh, targetFaceCount());
 
         decimator->moveToThread(thread);
 
@@ -271,6 +272,7 @@ void MeshReduction::onDecimateProgress(float value)
 
 void MeshReduction::onStartDecimating()
 {
+    statusBar()->showMessage(tr("Started decimating..."));
     setIsDecimating(true);
 }
 
@@ -279,6 +281,8 @@ void MeshReduction::onFinishDecimating()
     setIsDecimating(false);
 
     m_progressDialog.reset();
+
+    statusBar()->showMessage(tr("Finished decimating."));
 
     emit meshChanged();
 }
@@ -380,23 +384,36 @@ void MeshReduction::openFile(const QString &fileName)
     SceneFile* newFile = new SceneFile(fileName);
 
     if (newFile->hasError()) {
-        QMessageBox msgBox;
-        msgBox.critical(nullptr, tr("Failed to open file!"), newFile->errorString());
+        QMessageBox::critical(this, tr("Failed to open file!"), newFile->errorString());
 
         delete newFile;
     } else {
-        statusBar()->showMessage(tr("Opened file") + ": \"" + newFile->fileName() + "\"");
         setCurrentFile(newFile);
+        statusBar()->showMessage(tr("Opened file: \"%1\"").arg(newFile->fileName()));
     }
 }
 
 void MeshReduction::closeFile()
 {
+    QString fn;
+    if (currentFile()) {
+        fn = currentFile()->fileName();
+    }
+
     setCurrentFile(nullptr);
+
+    statusBar()->showMessage(tr("Closed file: \"%1\"").arg(fn));
 }
 
 void MeshReduction::showExportDialog()
 {
     ExportDialog dialog(m_currentFile.get(), m_selectedMesh, this);
-    dialog.exec();
+    QDialog::DialogCode r = (QDialog::DialogCode)dialog.exec();
+    if (r == QDialog::Accepted) {
+        if (dialog.hasError()) {
+            statusBar()->showMessage(tr("Failed to export scene!"));
+        } else {
+            statusBar()->showMessage(tr("Exported scene to: \"%1\"").arg(dialog.currentFileName()));
+        }
+    }
 }

@@ -10,7 +10,7 @@
 
 class Mesh;
 
-class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
+class MeshViewer : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
 {
 	Q_OBJECT
 
@@ -46,8 +46,8 @@ private:
     void cleanupMesh();
 
 public:
-	GLWidget(QWidget* parent = 0);
-	~GLWidget();
+    MeshViewer(QWidget* parent = 0);
+    ~MeshViewer();
 
     inline Mesh* currentMesh() const { return m_currentMesh; }
     inline bool drawFaces() const { return m_drawFaces; }

@@ -1,4 +1,4 @@
-#include "glwidget.hpp"
+#include "mesh_viewer.hpp"
 #include "mesh.hpp"
 
 #include <QSurfaceFormat>
@@ -22,7 +22,7 @@
 #define MAX_VIEW_DIST 500.0f
 #define ZOOM_SPEED 0.001f
 
-GLWidget::GLWidget(QWidget* parent) : QOpenGLWidget(parent), m_currentMesh(nullptr),
+MeshViewer::MeshViewer(QWidget* parent) : QOpenGLWidget(parent), m_currentMesh(nullptr),
     m_indexBuf(QOpenGLBuffer::IndexBuffer),
     m_vertexBuf(QOpenGLBuffer::VertexBuffer),
     m_normalBuf(QOpenGLBuffer::VertexBuffer),
@@ -36,22 +36,22 @@ GLWidget::GLWidget(QWidget* parent) : QOpenGLWidget(parent), m_currentMesh(nullp
     setFormat(f);
 }
 
-GLWidget::~GLWidget()
+MeshViewer::~MeshViewer()
 {
     cleanupGL();
 }
 
-QQuaternion GLWidget::viewRot() const
+QQuaternion MeshViewer::viewRot() const
 {
     return QQuaternion::fromEulerAngles(QVector3D(m_viewRotX, m_viewRotY, 0.0f));
 }
 
-QMatrix4x4 GLWidget::mvpMat() const
+QMatrix4x4 MeshViewer::mvpMat() const
 {
     return m_proj * m_view * m_world;
 }
 
-void GLWidget::setCurrentMesh(Mesh* mesh)
+void MeshViewer::setCurrentMesh(Mesh* mesh)
 {
     if (mesh != m_currentMesh) {
         makeCurrent();
@@ -70,7 +70,7 @@ void GLWidget::setCurrentMesh(Mesh* mesh)
     }
 }
 
-void GLWidget::reinitMesh()
+void MeshViewer::reinitMesh()
 {
     if (m_currentMesh != nullptr) {
         makeCurrent();
@@ -84,19 +84,19 @@ void GLWidget::reinitMesh()
     }
 }
 
-void GLWidget::setDrawFaces(bool v)
+void MeshViewer::setDrawFaces(bool v)
 {
     m_drawFaces = v;
     update();
 }
 
-void GLWidget::setDrawWireframe(bool v)
+void MeshViewer::setDrawWireframe(bool v)
 {
     m_drawWireframe = v;
     update();
 }
 
-void GLWidget::resetView()
+void MeshViewer::resetView()
 {
     m_viewCenter = QVector3D(0.0f, 0.0f, 0.0f);
     m_viewRotX = 0.0f;
@@ -106,7 +106,7 @@ void GLWidget::resetView()
     update();
 }
 
-void GLWidget::initMesh()
+void MeshViewer::initMesh()
 {
     QMutexLocker ml(m_currentMesh->mutex());
 
@@ -141,7 +141,7 @@ void GLWidget::initMesh()
     m_meshInitialized = true;
 }
 
-void GLWidget::initializeGL()
+void MeshViewer::initializeGL()
 {
     connect(context(), SIGNAL(aboutToBeDestroyed()), this, SLOT(cleanupGL()));
 
@@ -195,7 +195,7 @@ void GLWidget::initializeGL()
     m_wireFrameColor = QVector4D(1.0f, 0.6496f, 0.38f, 1.0f);
 }
 
-void GLWidget::calcViewMat()
+void MeshViewer::calcViewMat()
 {
     QVector3D eyePos = m_viewCenter + viewRot() * QVector3D(0.0f, 0.0f, m_viewDist);
 
@@ -205,7 +205,7 @@ void GLWidget::calcViewMat()
     m_view.lookAt(eyePos, m_viewCenter, QVector3D(0.0f, 1.0f, 0.0f));
 }
 
-void GLWidget::paintGL()
+void MeshViewer::paintGL()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -257,19 +257,19 @@ void GLWidget::paintGL()
     }
 }
 
-void GLWidget::resizeGL(int width, int height)
+void MeshViewer::resizeGL(int width, int height)
 {
     m_proj.setToIdentity();
     m_proj.perspective(FOV, float(width) / float(height), 0.1f, 1000.0f);
 }
 
-void GLWidget::mousePressEvent(QMouseEvent *event)
+void MeshViewer::mousePressEvent(QMouseEvent *event)
 {
     m_lastMousePos = event->pos();
     event->accept();
 }
 
-void GLWidget::mouseMoveEvent(QMouseEvent *event)
+void MeshViewer::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint pos = event->pos();
     int deltaX = pos.x() - m_lastMousePos.x();
@@ -296,7 +296,7 @@ void GLWidget::mouseMoveEvent(QMouseEvent *event)
     event->accept();
 }
 
-void GLWidget::wheelEvent(QWheelEvent *event)
+void MeshViewer::wheelEvent(QWheelEvent *event)
 {
     m_viewDist += m_viewDist * -event->angleDelta().y() * ZOOM_SPEED;
     if (m_viewDist < MIN_VIEW_DIST) m_viewDist = MIN_VIEW_DIST;
@@ -306,7 +306,7 @@ void GLWidget::wheelEvent(QWheelEvent *event)
     event->accept();
 }
 
-void GLWidget::cleanupMesh()
+void MeshViewer::cleanupMesh()
 {
     m_meshInitialized = false;
 
@@ -316,7 +316,7 @@ void GLWidget::cleanupMesh()
     m_vao.destroy();
 }
 
-void GLWidget::cleanupGL()
+void MeshViewer::cleanupGL()
 {
     makeCurrent();
 

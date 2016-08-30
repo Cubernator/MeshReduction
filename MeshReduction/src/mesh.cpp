@@ -23,6 +23,11 @@ Mesh::~Mesh() { }
 
 QString Mesh::name() const { return m_importedMesh->mName.C_Str(); }
 
+bool Mesh::isDirty() const
+{
+    return faceCount() != importedFaceCount();
+}
+
 void Mesh::processImportedMesh()
 {
     m_indices.clear();
@@ -270,6 +275,7 @@ bool Mesh::isPairContractable(mesh_index v0, mesh_index v1, const glm::vec3& new
 
     unsigned int val0 = vValency(v0), val1 = vValency(v1);
     if (val0 <= 3 && val1 <= 3) {
+        // this test prevents loose parts of the mesh from forming degenerate triangles
         return false;
     }
 
@@ -328,13 +334,10 @@ unsigned int Mesh::collapseEdge(mesh_index e, const glm::vec3& newPos)
 
     mesh_index ve0 = vEdge(v0), nve = ve0;
 
-    if (e == 50123) {
-        qDebug() << "RELEASE ME";
-    }
-
+    // reassign vertex edge if it is about to be removed
     if ((!vIsBoundary(v0)) && vIsBoundary(v1)) {
         nve = vEdge(v1);
-    } else if (ve0 == e0) { // reassign vertex edge if it is about to be removed
+    } else if (ve0 == e0) {
         if (eIsBoundary(e0)) {
             nve = vEdge(v1);
         } else {
@@ -384,7 +387,9 @@ unsigned int Mesh::collapseEdge(mesh_index e, const glm::vec3& newPos)
     m_vertexEdges[v1] = inv_index;
     --m_vertexCount;
 
+#if defined(_DEBUG)
     runVertexTest(v0);
+#endif
 
     return dfc;
 }
@@ -445,6 +450,22 @@ void Mesh::cleanupData()
     m_vertexNormals.resize(m_vertexEdges.size());
 
     assert(m_vertexCount == m_vertexEdges.size());
+}
+
+void Mesh::recomputeNormals()
+{
+    for (mesh_index v = 0; v < m_vertexEdges.size(); ++v) {
+        glm::vec3 normal;
+
+        for (mesh_index e : vEdgeFan(v)) {
+            if (eIsBoundary(e))
+                continue;
+
+            normal += fNormal(eFace(e));
+        }
+
+        m_vertexNormals[v] = glm::normalize(normal);
+    }
 }
 
 void Mesh::runTests()
@@ -520,21 +541,5 @@ void Mesh::runEdgeTest(mesh_index e)
         if (e != eppp) {
             qDebug() << "previous doesn't match:" << e;
         }
-    }
-}
-
-void Mesh::recomputeNormals()
-{
-    for (mesh_index v = 0; v < m_vertexEdges.size(); ++v) {
-        glm::vec3 normal;
-
-        for (mesh_index e : vEdgeFan(v)) {
-            if (eIsBoundary(e))
-                continue;
-
-            normal += fNormal(eFace(e));
-        }
-
-        m_vertexNormals[v] = glm::normalize(normal);
     }
 }

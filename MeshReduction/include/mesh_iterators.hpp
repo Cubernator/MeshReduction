@@ -5,9 +5,10 @@
 
 #include <iterator>
 
-#define TEST_EFAN_ITER_DEBUG 1
+// comment this out to disable iteration tests in debug mode
+#define TEST_EFAN_ITER_DEBUG
 
-#if defined(_DEBUG) && TEST_EFAN_ITER_DEBUG
+#if defined(_DEBUG) && defined(TEST_EFAN_ITER_DEBUG)
 #define TEST_EFAN_ITER
 #endif
 

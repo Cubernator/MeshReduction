@@ -30,7 +30,7 @@ SceneFile::SceneFile(const QString& fileName) : m_fileName(fileName)
     }
 }
 
-void SceneFile::exportToFile(const QString &fileName, const QString &formatId, const std::vector<bool> &includedMeshMask) const
+QString SceneFile::exportToFile(const QString &fileName, const QString &formatId, const std::vector<bool> &includedMeshMask) const
 {
     aiScene exportedScene;
 
@@ -68,6 +68,8 @@ void SceneFile::exportToFile(const QString &fileName, const QString &formatId, c
     Assimp::Exporter exporter;
 
     exporter.Export(&exportedScene, formatId.toStdString(), fileName.toStdString());
+
+    return QString(exporter.GetErrorString());
 }
 
 QString SceneFile::getImportExtensions()

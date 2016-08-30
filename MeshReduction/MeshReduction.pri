@@ -1,5 +1,4 @@
 HEADERS += \
-    $$PWD/include/glwidget.hpp \
     $$PWD/include/mesh.hpp \
     $$PWD/include/meshreduction.hpp \
     $$PWD/include/scenefile.hpp \
@@ -7,10 +6,10 @@ HEADERS += \
     $$PWD/include/mesh_iterators.hpp \
     $$PWD/include/mesh_index.hpp \
     $$PWD/include/mesh_decimator.hpp \
-    $$PWD/include/exportdialog.hpp
+    $$PWD/include/exportdialog.hpp \
+    $$PWD/include/mesh_viewer.hpp
 
 SOURCES += \
-    $$PWD/src/glwidget.cpp \
     $$PWD/src/main.cpp \
     $$PWD/src/meshreduction.cpp \
     $$PWD/src/scenefile.cpp \
@@ -18,7 +17,8 @@ SOURCES += \
     $$PWD/src/mesh_iterators.cpp \
     $$PWD/src/util.cpp \
     $$PWD/src/mesh_decimator.cpp \
-    $$PWD/src/exportdialog.cpp
+    $$PWD/src/exportdialog.cpp \
+    $$PWD/src/mesh_viewer.cpp
 
 FORMS += \
     $$PWD/forms/meshreduction.ui \

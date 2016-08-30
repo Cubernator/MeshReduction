@@ -60,10 +60,10 @@ private:
 
     VertexPairCostComparer m_costComparer;
 
-    std::vector<Quadric> m_quadrics;
-    std::vector<VertexPair> m_pairs;
-    priority_queue m_pairsByCost;
-    std::unordered_multimap<mesh_index, std::size_t> m_pairsByVertex;
+    std::vector<Quadric> m_quadrics; // quadrics for every vertex
+    std::vector<VertexPair> m_pairs; // all valid vertex pairs
+    priority_queue m_pairsByCost; // vertex pairs sorted by cost
+    std::unordered_multimap<mesh_index, std::size_t> m_pairsByVertex; // vertex pairs keyed by the vertices they contain
 
     mutable QMutex m_mutex;
 

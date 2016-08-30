@@ -36,7 +36,7 @@ public:
     inline Mesh* getMesh(unsigned int index) { return m_meshes[index].get(); }
     inline const Mesh* getMesh(unsigned int index) const { return m_meshes[index].get(); }
 
-    void exportToFile(const QString& fileName, const QString& formatId, const std::vector<bool>& includedMeshMask) const;
+    QString exportToFile(const QString& fileName, const QString& formatId, const std::vector<bool>& includedMeshMask) const;
 
     static QString getImportExtensions();
     static QString getExportExtensions();

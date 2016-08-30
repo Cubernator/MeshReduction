@@ -5,6 +5,10 @@
 #include <QDebug>
 
 
+MeshDecimator::MeshDecimator(Mesh *mesh, unsigned int targetFaceCount) :
+    m_mesh(mesh), m_targetFaceCount(targetFaceCount), m_abort(false), m_costComparer(m_pairs), m_pairsByCost(m_costComparer)
+{ }
+
 void MeshDecimator::computeQuadrics()
 {
     m_quadrics.resize(m_mesh->vertexCount());
@@ -78,7 +82,7 @@ void MeshDecimator::computePairCost(std::size_t p)
 
 void MeshDecimator::initPairs()
 {
-    // reserve memory to avoid reallocations and/or rehashes
+    // reserve memory to avoid reallocations
     m_pairs.reserve(m_mesh->edgeCount());
 
     std::unordered_set<mesh_index> skipEdges;
@@ -133,12 +137,6 @@ bool MeshDecimator::isPairContractable(const MeshDecimator::VertexPair &pair) co
     return m_mesh->isPairContractable(pair.m_v0, pair.m_v1, pair.m_newPos);
 }
 
-MeshDecimator::MeshDecimator(Mesh *mesh, unsigned int targetFaceCount) :
-    m_mesh(mesh), m_targetFaceCount(targetFaceCount), m_abort(false), m_costComparer(m_pairs), m_pairsByCost(m_costComparer)
-{
-    m_lastAttemptFaceCount = m_oldFaceCount = m_currentFaceCount = m_mesh->faceCount();
-}
-
 bool MeshDecimator::iterate()
 {
     if (m_pairsByCost.empty()) { // no pairs left!
@@ -154,6 +152,7 @@ bool MeshDecimator::iterate()
         initHelpers();
     }
 
+    // get pair with lowest cost (top of the priority queue)
     std::size_t p = m_pairsByCost.top();
     m_pairsByCost.pop();
 
@@ -167,8 +166,10 @@ bool MeshDecimator::iterate()
     mesh_index v0 = curPair.m_v0, v1 = curPair.m_v1;
     mesh_index collEdge = m_mesh->vConnectingEdge(v0, v1);
 
+    // perform edge collapse
     m_currentFaceCount -= m_mesh->collapseEdge(collEdge, curPair.m_newPos);
 
+    // update pairs
     auto v1Range = m_pairsByVertex.equal_range(v1);
     for (auto it = v1Range.first; it != v1Range.second; ++it) {
         std::size_t p1 = it->second;
@@ -189,10 +190,12 @@ bool MeshDecimator::iterate()
 
     curPair.invalidate();
 
+    // update quadrics
     m_quadrics[v0] += m_quadrics[v1];
 
     std::unordered_set<mesh_index> duplicateHelper;
 
+    // update cost of affected pairs
     auto v0Range = m_pairsByVertex.equal_range(v0);
     for (auto it = v0Range.first; it != v0Range.second; ++it) {
         std::size_t pi = it->second;
@@ -265,21 +268,29 @@ void MeshDecimator::abort()
 
 void MeshDecimator::start()
 {
-    QMutexLocker ml(m_mesh->mutex());
+    {
+        QMutexLocker ml(m_mesh->mutex());
 
-    try {
-        computeQuadrics();
-        initPairs();
-        initHelpers();
+        try {
+            if (m_mesh->isDirty()) {
+                m_mesh->reset();
+            }
 
-        while (true) {
-            if (isAborting() || !iterate())
-                break;
+            m_lastAttemptFaceCount = m_oldFaceCount = m_currentFaceCount = m_mesh->faceCount();
 
-            updateProgress();
+            computeQuadrics();
+            initPairs();
+            initHelpers();
+
+            while (true) {
+                if (isAborting() || !iterate())
+                    break;
+
+                updateProgress();
+            }
+        } catch (std::runtime_error& e) {
+            emit error(QString(e.what()));
         }
-    } catch (std::runtime_error& e) {
-        emit error(QString(e.what()));
     }
 
     emit finished();

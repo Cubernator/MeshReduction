@@ -6,12 +6,14 @@
 #include <QSettings>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QMessageBox>
 #include <QDir>
 
 ExportDialog::ExportDialog(SceneFile *scene, Mesh *selectedMesh, QWidget *parent) :
     QDialog(parent),
     ui(new Ui::ExportDialog),
-    m_scene(scene)
+    m_scene(scene),
+    m_error(false)
 {
     ui->setupUi(this);
 
@@ -134,7 +136,11 @@ void ExportDialog::accept()
         meshMask[i] = cs != Qt::Unchecked;
     }
 
-    m_scene->exportToFile(fn, formatId, meshMask);
+    QString errorString = m_scene->exportToFile(fn, formatId, meshMask);
+    if (!errorString.isEmpty()) {
+        m_error = true;
+        QMessageBox::critical(this, tr("Failed to export scene!"), errorString);
+    }
 
     QFileInfo fi(fn);
 

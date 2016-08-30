@@ -15,6 +15,13 @@ class ExportDialog : public QDialog
 {
     Q_OBJECT
 
+private:
+    Ui::ExportDialog *ui;
+
+    std::vector<ExportFormat> m_formats;
+    SceneFile* m_scene;
+    bool m_error;
+
 public:
     explicit ExportDialog(SceneFile* scene, Mesh* selectedMesh, QWidget *parent = 0);
     ~ExportDialog();
@@ -25,11 +32,7 @@ public:
     unsigned int selectedFormatIndex() const;
     bool syncFileExtension() const;
 
-private:
-    Ui::ExportDialog *ui;
-
-    std::vector<ExportFormat> m_formats;
-    SceneFile* m_scene;
+    bool hasError() const { return m_error; }
 
 private slots:
     void setCurrentFileName(QString fileName);

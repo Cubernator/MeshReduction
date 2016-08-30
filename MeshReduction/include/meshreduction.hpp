@@ -26,7 +26,7 @@ private:
 
 	std::unique_ptr<SceneFile> m_currentFile;
     Mesh* m_selectedMesh;
-	GLWidget* m_glWidget;
+    MeshViewer* m_glWidget;
 
     std::unique_ptr<QProgressDialog> m_progressDialog;
 
@@ -44,6 +44,8 @@ public:
 
     inline SceneFile* currentFile() const { return m_currentFile.get(); }
     inline Mesh* selectedMesh() const { return m_selectedMesh; }
+
+    unsigned int targetFaceCount() const;
 
     static QString getFormattedMeshName(const Mesh* mesh);
 

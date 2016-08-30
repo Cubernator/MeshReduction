@@ -45,6 +45,7 @@ edge_fan_iterator &edge_fan_iterator::operator++()
         m_eCurrent = inv_index; // this marks the iterator as "past the end"
     }
 
+    // this debugging-test is intended to detect infinite loops caused by corrupted mesh structures
 #ifdef TEST_EFAN_ITER
     ++m_iterations;
     if (m_iterations > MAX_EFAN_ITERATIONS) {

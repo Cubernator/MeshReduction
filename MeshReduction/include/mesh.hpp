@@ -14,7 +14,7 @@
 #include <functional>
 
 
-struct HalfEdge
+struct Halfedge
 {
     /*!
      * \brief index of the vertex this halfedge is pointing away from. always valid.
@@ -42,9 +42,9 @@ struct HalfEdge
     mesh_index m_previous;
 };
 
-const HalfEdge inv_edge ({ inv_index, inv_index, inv_index, inv_index, inv_index });
+const Halfedge inv_edge ({ inv_index, inv_index, inv_index, inv_index, inv_index });
 
-inline bool is_valid(const HalfEdge& edge)
+inline bool is_valid(const Halfedge& edge)
 {
     return is_valid(edge.m_vertex) && is_valid(edge.m_face) && is_valid(edge.m_opposite);
 }
@@ -62,7 +62,7 @@ private:
     unsigned int m_vertexCount;
 
     // connectivity information (winged half edge data)
-    std::vector<HalfEdge> m_edges;
+    std::vector<Halfedge> m_edges;
     std::vector<mesh_index> m_faceEdges;
     std::vector<mesh_index> m_vertexEdges; // if vertex is boundary: always boundary edge!
 
@@ -105,6 +105,8 @@ public:
     const aiMesh* importedMesh() const;
 
     QMutex* mutex() const { return &m_mutex; }
+
+    bool isDirty() const;
 
 
     // edge queries
