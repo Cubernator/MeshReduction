@@ -14,8 +14,8 @@ Make sure Qt is properly configured to use the Mingw compiler!
 
 1. Create a build directory outside the project tree
 2. Change the working directory to this build directory
-3. Call "qmake <path-to-project-dir>\MeshReduction\MeshReduction.pro -spec win32-g++"
-4. Call "<path-to-mingw>\bin\mingw32-make"
+3. Run "<qt-dir>\bin\qmake <project-dir>\MeshReduction\MeshReduction.pro -spec win32-g++"
+4. Run "<path-to-mingw>\bin\mingw32-make"
 
 See the instructions below if you want to run the built executable
 
@@ -29,9 +29,10 @@ See the instructions below if you want to run the built executable
 5. Press "Ctrl+R" or click "Run"
 
 
-Note that if you build this project using Qt Creator, it should be able to run the executable out of the box
-(but only if it is launched using Qt Creator's GUI).
-If you want to use the built executable on it's own, you have to copy all necessary DLLs to the output directory first.
+If the build was successful, the built executable can be found in "<build-dir>\<config>\build\".
+
+Note that if you build this project using any of the above methods, you might not be able to run the executable out of the box.
+In order to successfully run the executable, all necessary DLLs need to be copied to the output directory first.
 These are:
 
 - Qt5Core.dll
